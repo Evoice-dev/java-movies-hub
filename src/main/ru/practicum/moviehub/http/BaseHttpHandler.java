@@ -1,17 +1,21 @@
 package ru.practicum.moviehub.http;
 
-import com.sun.net.httpserver.HttpHandler;
-
+import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import ru.practicum.moviehub.api.ErrorResponse;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Year;
+import java.util.List;
 
 public abstract class BaseHttpHandler implements HttpHandler {
     protected static final String CT_JSON = "application/json; charset=UTF-8";
+    protected static final int MIN_YEAR = 1888;
+    protected final Gson gson = new Gson();
 
     protected void sendJson(HttpExchange ex, int status, String json) throws IOException {
         byte[] respBytes = json.getBytes(StandardCharsets.UTF_8);
@@ -31,22 +35,15 @@ public abstract class BaseHttpHandler implements HttpHandler {
     }
 
     protected void sendError(HttpExchange ex, int status, String message) throws IOException {
-        String json = "{\"error\":\"" + escapeJson(message) + "\"}";
+        ErrorResponse errorResponse = new ErrorResponse(message);
+        String json = gson.toJson(errorResponse);
         sendJson(ex, status, json);
     }
 
-    protected void sendValidationError(HttpExchange ex, String error, java.util.List<String> details) throws IOException {
-        String detailsJson = details.stream()
-                .map(s -> "\"" + escapeJson(s) + "\"")
-                .reduce((a, b) -> a + "," + b)
-                .map(s -> "[" + s + "]")
-                .orElse("[]");
-        String json = "{\"error\":\"" + escapeJson(error) + "\",\"details\":" + detailsJson + "}";
+    protected void sendValidationError(HttpExchange ex, String error, List<String> details) throws IOException {
+        ErrorResponse errorResponse = new ErrorResponse(error, details);
+        String json = gson.toJson(errorResponse);
         sendJson(ex, 422, json);
-    }
-
-    protected String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     protected String readRequestBody(HttpExchange ex) throws IOException {
@@ -62,15 +59,16 @@ public abstract class BaseHttpHandler implements HttpHandler {
 
     protected boolean isValidYear(int year) {
         int currentYear = Year.now().getValue();
-        return year >= 1888 && year <= currentYear + 1;
+        return year >= MIN_YEAR && year <= currentYear + 1;
     }
 
     protected Long extractIdFromPath(String path) {
-        String[] segments = path.split("/");
-        if (segments.length < 2) return null;
-        String last = segments[segments.length - 1];
+        String trimmed = path.replaceAll("^/|/$", "");
+        String[] segments = trimmed.split("/");
+        if (segments.length != 2) return null;
+        if (!"movies".equals(segments[0])) return null;
         try {
-            return Long.parseLong(last);
+            return Long.parseLong(segments[1]);
         } catch (NumberFormatException e) {
             return null;
         }
@@ -78,5 +76,18 @@ public abstract class BaseHttpHandler implements HttpHandler {
 
     protected boolean isBasePath(String path) {
         return path.equals("/movies") || path.equals("/movies/");
+    }
+
+    protected String getQueryParam(HttpExchange ex, String key) {
+        String query = ex.getRequestURI().getQuery();
+        if (query == null) return null;
+        String[] params = query.split("&");
+        for (String param : params) {
+            String[] pair = param.split("=", 2);
+            if (pair.length == 2 && pair[0].equals(key)) {
+                return pair[1];
+            }
+        }
+        return null;
     }
 }

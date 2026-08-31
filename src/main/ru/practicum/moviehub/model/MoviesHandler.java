@@ -1,6 +1,5 @@
 package ru.practicum.moviehub.model;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.sun.net.httpserver.HttpExchange;
 import ru.practicum.moviehub.http.BaseHttpHandler;
@@ -14,7 +13,6 @@ import java.util.stream.Collectors;
 
 public class MoviesHandler extends BaseHttpHandler {
     private final MoviesStore store;
-    private final Gson gson = new Gson();
 
     public MoviesHandler(MoviesStore store) {
         this.store = store;
@@ -55,11 +53,12 @@ public class MoviesHandler extends BaseHttpHandler {
 
     private void handleGetAll(HttpExchange ex) throws IOException {
         String query = ex.getRequestURI().getQuery();
-        if (query != null && query.startsWith("year=")) {
-            handleGetByYear(ex, query);
+        String yearParam = getQueryParam(ex, "year");
+        if (yearParam != null) {
+            handleGetByYear(ex, yearParam);
             return;
         } else if (query != null && !query.isEmpty()) {
-            sendError(ex, 400, "Некорректный параметр запроса - 'year'");
+            sendError(ex, 400, "Некорректный параметр запроса - только 'year'");
             return;
         }
 
@@ -68,8 +67,7 @@ public class MoviesHandler extends BaseHttpHandler {
         sendJson(ex, 200, json);
     }
 
-    private void handleGetByYear(HttpExchange ex, String query) throws IOException {
-        String yearParam = query.substring(5); // после "year="
+    private void handleGetByYear(HttpExchange ex, String yearParam) throws IOException {
         try {
             int year = Integer.parseInt(yearParam);
             List<Movie> filtered = store.getAll().stream()
@@ -107,7 +105,7 @@ public class MoviesHandler extends BaseHttpHandler {
         int year = incoming.getYear();
         if (!isValidYear(year)) {
             int currentYear = Year.now().getValue();
-            errors.add("год должен быть между 1888 и " + (currentYear + 1));
+            errors.add("год должен быть между " + MIN_YEAR + " и " + (currentYear + 1));
         }
 
         if (!errors.isEmpty()) {
